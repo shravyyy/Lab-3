@@ -1,14 +1,30 @@
 ---
 title: "BSMM-lab-3"
 subtitle: "BSMM 8740 Fall 2023"
-author: "Add your name here"
-date: "Add the date here"
+author: "Sharvya Pusa""
+date: "2 October 2023"
 format: html
 editor: visual
 self-contained: true
 ---
 
 ## Setup
+
+```{r}
+library(magrittr)
+library(tidyverse) 
+library(tidymodels)
+library(gt) 
+library(skimr)
+library(janitor)
+library(recipes)
+library(dplyr)
+library(forcats)
+library(ggplot2)
+library(recipes)
+library(dplyr)
+
+```
 
 Load packages and data:
 
@@ -21,28 +37,163 @@ boston_cocktails <- readr::read_csv('data/boston_cocktails.csv')
 
 ### Exercise 1
 
-The median measure amount across across all cocktails is \_\_\_.
+```{r}
+skimr::skim(boston_cocktails)
+DataExplorer::introduce(boston_cocktails)
+summary(boston_cocktails$measure_number, category="Cocktail Classics")
+```
+
+The median measure amount across across all cocktails is **1**.
 
 ### Exercise 2
 
-The **Leap Frog Highball** contains \_\_\_ of gin
+```{r}
+boston_cocktails1 <- boston_cocktails |>
+  dplyr::select(name, category, ingredient, measure_number)
+pivot_cocktails <- boston_cocktails1 |>
+  pivot_wider(
+    names_from =ingredient,
+    values_from=measure_number)
+
+pivot_cocktails <-pivot_cocktails |>
+  replace(is.na(pivot_cocktails),0)
+
+pivot_cocktails <- pivot_cocktails |>
+  clean_names()
+
+```
+
+```{r}
+gin_amount <- pivot_cocktails |>
+  dplyr::filter(name=="Leap Frog Highball")
+gin_amount
+```
+
+```{r}
+cleaned_table <- pivot_cocktails |>
+  janitor::clean_names()
+```
+
+The **Leap Frog Highball** contains **2 oz** of gin
 
 ### Exercise 3
 
-\_\_\_ predictor variables are prepped by the recipe.
+```{r}
+summary(recipe_obj <- recipe(~ ., data = cleaned_table))
+```
+
+```{r}
+recipe_obj <- recipe(~ ., data =cleaned_table) %>%
+  update_role(name, category, new_role = "id") %>% recipes::step_normalize(all_numeric()) %>%step_pca(all_numeric())
+
+
+prepped_data <- prep(recipe_obj)
+
+summary(prepped_data)
+```
+
+```{r}
+prepped_data
+```
+
+```{r}
+
+```
+
+**40** predictor variables are prepped by the recipe.
 
 ### Exercise 4
 
-On average the most used ingredient in the Boston Cocktails dataset is \_\_\_\_.
+```{r}
+tidy_info <- recipes::tidy(prepped_data)
+tidy_info
+```
+
+```{r}
+tidy_normalized_values <- prepped_data
+
+tidy_normalized_values %>% recipes::tidy()
+```
+
+```{r}
+tidy_normalized_values %>% recipes::tidy(1) %>% dplyr::arrange(desc(value))
+```
+
+```{r}
+tidy_normalized_values
+```
+
+```{r}
+most_used_ingredient <- boston_cocktails %>%
+  group_by(ingredient) %>%
+  summarise(average_count = mean(measure_number)) %>%
+  arrange(desc(average_count))   # without normalization method
+most_used_ingredient
+```
+
+On average the most used ingredient in the Boston Cocktails dataset is **cranberry juice without nomalization and orange juice with normalization.**
 
 ### Exercise 5
 
+```{r}
+library(recipes)
+library(dplyr)
+library(ggplot2)
+library(forcats)
+
+drinks_data <- tidy_normalized_values %>% recipes::tidy(2)
+
+View(drinks_data)
+
+drinks_data_1_to_5 <- drinks_data %>% dplyr::filter(component %in% c("PC1","PC2","PC3","PC4","PC5")) %>% dplyr::mutate(order = forcats::fct_inorder(component))
+
+view(drinks_data_1_to_5)
+
+drinks_data_1_to_5 %>% ggplot(aes(value, terms, fill = terms)) +
+geom_col(show.legend = FALSE) +
+facet_wrap(~component, nrow = 1) +
+labs(y = NULL) +
+theme(axis.text=element_text(size=7),
+      axis.title=element_text(size=14,face="bold"))
+```
+
 Describe describe the drinks represented by PC1?
+
+**Less calories, sweet & syrupy, mildly bitter and moderate alcohol content.**
 
 ### Exercise 6
 
-The characteristic alcoholic beverage of each of the first 4 principle components is \_\_\_.
+```{r}
+library(dplyr)
+library(gt)
+
+
+# Filter for PCA components PC1 to PC4
+drinks_data %>%
+  filter(component %in% c("PC1", "PC2", "PC3", "PC4")) %>%  
+  group_by(component) %>%
+  slice_max(order_by = abs(value), n = 8) %>%
+  gt() %>%
+  data_color(
+    columns = c(value),
+    colors = scales::col_numeric(
+      palette = c("red", "green"),
+      domain = c(-1, 1)
+    )
+  )
+```
+
+The characteristic alcoholic beverage of each of the first 4 principle components is **PC1: blanco_tequila, PC2: dry_vermouth PC3: gin, PC4: vodka**
 
 ### Exercise 7
 
+```{r}
+recipes::bake(prepped_data,cleaned_table) %>% ggplot(aes(PC1, PC2, label = name)) +
+geom_point(aes(color = category), alpha = 0.7, size = 2) +
+geom_text(check_overlap = TRUE, hjust = "inward") +
+labs(color = NULL)
+```
+
 How would you interpret the results of a PCA analysis for a client?
+
+PC1 and PC2 both show a lack of emphasis on classic cocktail drinks with negative values. This suggests that they are not centered around cocktail classics, making it less probable for these categories to include cordials or liqueurs as well as light cocktail classics. PC1 primarily emphasizes strong, undiluted alcoholic beverages rather than cocktails. In contrast, PC2 predominantly consists of cocktail-centric drinks with a reduced presence of straight alcohol, while still containing a moderate alcohol content.
